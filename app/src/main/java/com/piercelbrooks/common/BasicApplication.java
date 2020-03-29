@@ -6,6 +6,7 @@ package com.piercelbrooks.common;
 import android.app.Activity;
 import android.app.Application;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.support.annotation.DrawableRes;
 import android.widget.Toast;
 
@@ -25,6 +26,10 @@ public abstract class BasicApplication extends Application implements Applicatio
     private Governor governor;
     private Preferences preferences;
     private Activity activity;
+
+    public BasicApplication() {
+        super();
+    }
 
     public static BasicApplication getInstance() {
         return (BasicApplication)Governor.getInstance().getCitizen(Family.APPLICATION);
@@ -66,6 +71,9 @@ public abstract class BasicApplication extends Application implements Applicatio
         registerActivityLifecycleCallbacks(this);
         birth();
         create();
+        StrictMode.ThreadPolicy.Builder builder = new StrictMode.ThreadPolicy.Builder();
+        builder.permitAll();
+        StrictMode.setThreadPolicy(builder.build());
     }
 
     @Override

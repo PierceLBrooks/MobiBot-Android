@@ -8,14 +8,14 @@ import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.Log;
 
-public abstract class BasicServiceConnector <T extends Enum<T>, U extends BasicService<U>> implements ServiceConnection, BasicServiceUser<U>
+public abstract class BasicLocalServiceConnector<T extends Enum<T>, U extends BasicLocalService<U>> implements ServiceConnection, BasicLocalServiceUser<U>
 {
-    private static final String TAG = "PLB-BaseServeConnect";
+    private static final String TAG = "PLB-BaseLocServeConnect";
 
-    private BasicServiceActivity<T, U> activity;
+    private BasicLocalServiceActivity<T, U> activity;
     private U service;
 
-    public BasicServiceConnector(BasicServiceActivity<T, U> activity)
+    public BasicLocalServiceConnector(BasicLocalServiceActivity<T, U> activity)
     {
         this.activity = activity;
         this.service = null;
@@ -28,7 +28,7 @@ public abstract class BasicServiceConnector <T extends Enum<T>, U extends BasicS
         {
             return;
         }
-        BasicServiceBinder<U> binder = (BasicServiceBinder<U>)service;
+        BasicLocalServiceBinder<U> binder = (BasicLocalServiceBinder<U>)service;
         Log.d(TAG, "Connecting service...");
         this.service = binder.getService();
         this.activity.onServiceConnected(this.service);
@@ -53,7 +53,7 @@ public abstract class BasicServiceConnector <T extends Enum<T>, U extends BasicS
         return service;
     }
 
-    public BasicServiceActivity<T, U> getActivity()
+    public BasicLocalServiceActivity<T, U> getActivity()
     {
         return activity;
     }

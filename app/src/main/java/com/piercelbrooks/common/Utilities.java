@@ -29,6 +29,14 @@ import java.util.Set;
 public abstract class Utilities {
     private static final String TAG = "PLB-Utilities";
 
+    public static void sleep(long milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (Exception exception) {
+            exception.printStackTrace();
+        }
+    }
+
     public static boolean enable(@Nullable View view) {
         if (view == null) {
             return false;

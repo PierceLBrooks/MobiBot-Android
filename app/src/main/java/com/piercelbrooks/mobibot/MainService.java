@@ -7,28 +7,13 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.support.v4.app.NotificationCompat;
 
-import com.piercelbrooks.common.BasicService;
-import com.piercelbrooks.common.BasicServiceBinder;
+import com.piercelbrooks.common.BasicRemoteService;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainService extends BasicService<MainService>
+public class MainService extends BasicRemoteService<MainService>
 {
-    public class MainServiceBinder extends BasicServiceBinder<MainService>
-    {
-        public MainServiceBinder(MainService service)
-        {
-            super(service);
-        }
-
-        @Override
-        public Class<?> getServiceClass()
-        {
-            return MainService.class;
-        }
-    }
-
     private static final String TAG = "MB-MainServe";
     private static final String KILL = "com.piercelbrooks.mobibot.KILL";
     private static final int KILL_CODE = 2;
@@ -64,13 +49,7 @@ public class MainService extends BasicService<MainService>
     }
 
     @Override
-    protected BasicServiceBinder<MainService> getBinder(MainService service)
-    {
-        return new MainServiceBinder(service);
-    }
-
-    @Override
-    protected String getName()
+    public String getName()
     {
         return TAG;
     }

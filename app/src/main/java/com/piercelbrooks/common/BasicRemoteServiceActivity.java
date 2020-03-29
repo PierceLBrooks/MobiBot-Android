@@ -6,24 +6,27 @@ package com.piercelbrooks.common;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
+import android.support.annotation.NonNull;
 import android.util.Log;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public abstract class BasicServiceActivity <T extends Enum<T>, U extends BasicService<U>> extends BasicActivity<T> implements BasicServiceUser<U>
+public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends BasicRemoteService<U>> extends BasicActivity<T> implements BasicRemoteServiceUser<U>, ClientListener
 {
-    private static final String TAG = "PLB-BaseServeAct";
+    private static final String TAG = "PLB-BaseRemServeAct";
 
+    private Object firstClientRun;
+    private Client client;
     private AtomicBoolean isBound;
-    private BasicServiceConnector<T, U> connector;
     private U service;
 
-    protected abstract BasicServiceConnector<T, U> getConnector(BasicServiceActivity<T, U> activity);
-
-    public BasicServiceActivity()
+    public BasicRemoteServiceActivity()
     {
         super();
         isBound = new AtomicBoolean();
+        firstClientRun = new Object();
+        client = null;
+        service = null;
     }
 
     public void onServiceConnected(U service)
@@ -50,11 +53,6 @@ public abstract class BasicServiceActivity <T extends Enum<T>, U extends BasicSe
 
     public boolean getIsServiceBound()
     {
-        if (connector == null)
-        {
-            Log.v(TAG, "No connection.");
-            return false;
-        }
         return isBound.get();
     }
 
@@ -107,16 +105,26 @@ public abstract class BasicServiceActivity <T extends Enum<T>, U extends BasicSe
     {
         if (!getIsServiceBound())
         {
-            boolean success;
+            boolean success = false;
             Log.d(TAG, "Binding service...");
-            if (connector == null)
+            if (this.client == null)
             {
-                connector = getConnector(this);
-                success = bindService(getServiceIntent(), connector, Context.BIND_AUTO_CREATE);
-            }
-            else
-            {
-                success = true;
+                Client client = new Client(this);
+                client.birth();
+                while (this.client != client)
+                {
+                    synchronized (this.firstClientRun)
+                    {
+                        try
+                        {
+                            this.firstClientRun.wait();
+                        }
+                        catch (Exception exception)
+                        {
+                            exception.printStackTrace();
+                        }
+                    }
+                }
             }
             Log.d(TAG, "Bound service!");
             return success;
@@ -128,14 +136,16 @@ public abstract class BasicServiceActivity <T extends Enum<T>, U extends BasicSe
     {
         if (getIsServiceBound())
         {
+            boolean success = false;
             Log.d(TAG, "Unbinding service...");
-            if (connector != null)
+            if (client != null)
             {
-                unbindService(connector);
-                connector = null;
+                client.death();
+                client = null;
+                success = true;
             }
             Log.d(TAG, "Unbound service!");
-            return true;
+            return success;
         }
         return false;
     }
@@ -182,5 +192,16 @@ public abstract class BasicServiceActivity <T extends Enum<T>, U extends BasicSe
             bindService();
         }
         super.onResume();
+    }
+
+    @Override
+    public void onFirstClientRun(@NonNull Client client)
+    {
+        Utilities.sleep(250);
+        synchronized (this.firstClientRun)
+        {
+            this.client = client;
+            this.firstClientRun.notifyAll();
+        }
     }
 }

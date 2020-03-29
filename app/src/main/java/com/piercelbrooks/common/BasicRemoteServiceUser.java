@@ -3,7 +3,7 @@
 
 package com.piercelbrooks.common;
 
-public interface BasicServiceUser <T extends BasicService<T>>
+public interface BasicRemoteServiceUser<T extends BasicRemoteService<T>>
 {
     public Class<?> getServiceClass();
     public T getService();

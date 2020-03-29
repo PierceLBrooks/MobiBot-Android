@@ -19,6 +19,10 @@ public class MainApplication extends BasicApplication
     private MainActivity activity;
     private boolean serviceKill;
 
+    public MainApplication() {
+        super();
+    }
+
     public boolean killService() {
         if (activity != null) {
             Log.v(TAG, "Killing service now!");

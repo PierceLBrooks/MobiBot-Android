@@ -9,25 +9,17 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.util.Log;
 
-import com.piercelbrooks.common.BasicServiceActivity;
-import com.piercelbrooks.common.BasicServiceConnector;
+import com.piercelbrooks.common.BasicRemoteServiceActivity;
 import com.piercelbrooks.common.Mayor;
 
-public class MainActivity extends BasicServiceActivity<MayoralFamily, MainService> implements Accountant {
-    public class MainServiceConnector extends BasicServiceConnector<MayoralFamily, MainService> {
-        public MainServiceConnector(MainActivity activity) {
-            super(activity);
-        }
-
-        @Override
-        public Class<?> getServiceClass() {
-            return MainService.class;
-        }
-    }
-
+public class MainActivity extends BasicRemoteServiceActivity<MayoralFamily, MainService> implements Accountant {
     private static final String TAG = "MB-MainAct";
 
     private Ledger ledger;
+
+    public MainActivity() {
+        super();
+    }
 
     @Override
     protected void create() {
@@ -180,11 +172,6 @@ public class MainActivity extends BasicServiceActivity<MayoralFamily, MainServic
     @Override
     public Ledger getLedger() {
         return ledger;
-    }
-
-    @Override
-    protected BasicServiceConnector<MayoralFamily, MainService> getConnector(BasicServiceActivity<MayoralFamily, MainService> activity) {
-        return new MainServiceConnector(this);
     }
 
     @Override

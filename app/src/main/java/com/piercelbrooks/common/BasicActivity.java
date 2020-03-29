@@ -87,6 +87,10 @@ public abstract class BasicActivity <T extends Enum<T>> extends FragmentActivity
     protected abstract @IdRes int getFragmentSlot();
     protected abstract @LayoutRes int getLayout();
 
+    public BasicActivity() {
+        super();
+    }
+
     public Fragment getActiveFragment() {
         return activeFragment;
     }
