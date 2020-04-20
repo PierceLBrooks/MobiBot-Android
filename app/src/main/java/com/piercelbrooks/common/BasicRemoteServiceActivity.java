@@ -9,6 +9,11 @@ import android.content.Intent;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
+import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography;
+import org.json.JSONObject;
+
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends BasicRemoteService<U>> extends BasicActivity<T> implements BasicRemoteServiceUser<U>, ClientListener
@@ -109,9 +114,9 @@ public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends Ba
             Log.d(TAG, "Binding service...");
             if (this.client == null)
             {
-                Client client = new Client(this);
+                Client client = new Client(this, new InetSocketAddress(InetAddress.getLoopbackAddress(), Constants.REMOTE_SERVICE_CLIENT_PORT), getKey());
                 client.birth();
-                while (this.client != client)
+                while (true)
                 {
                     synchronized (this.firstClientRun)
                     {
@@ -123,6 +128,11 @@ public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends Ba
                         {
                             exception.printStackTrace();
                         }
+                    }
+                    if (this.client == client)
+                    {
+                        success = true;
+                        break;
                     }
                 }
             }
@@ -168,6 +178,11 @@ public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends Ba
         return new Intent(getApplicationContext(), getServiceClass());
     }
 
+    public static ECDHECryptography getKey()
+    {
+        return ECDHECryptography.fromNamedCurveId(ECDHECryptography.SupportedGroup.secp256r1.getId());
+    }
+
     @Override
     public U getService()
     {
@@ -198,6 +213,7 @@ public abstract class BasicRemoteServiceActivity<T extends Enum<T>, U extends Ba
     public void onFirstClientRun(@NonNull Client client)
     {
         Utilities.sleep(250);
+        client.send(new InetSocketAddress(InetAddress.getLoopbackAddress(), Constants.REMOTE_SERVICE_SERVER_PORT), getKey().getPublicKey(), new JSONObject(), null, null);
         synchronized (this.firstClientRun)
         {
             this.client = client;

@@ -4,6 +4,11 @@
 package com.piercelbrooks.common;
 
 import android.support.annotation.NonNull;
+import android.util.Log;
+
+import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography;
+
+import java.net.InetSocketAddress;
 
 public class Client extends Connection {
     private static final String TAG = "PLB-Client";
@@ -11,10 +16,10 @@ public class Client extends Connection {
     ClientListener listener;
     private boolean isFirst;
 
-    public Client(@NonNull ClientListener listener) {
-        super();
+    public Client(@NonNull ClientListener listener, @NonNull InetSocketAddress address, @NonNull ECDHECryptography key) {
+        super(address, key);
         this.listener = listener;
-        this.isFirst = false;
+        this.isFirst = true;
     }
 
     @Override
@@ -28,5 +33,15 @@ public class Client extends Connection {
     @Override
     protected boolean getRole() {
         return false;
+    }
+
+    @Override
+    public void onConnect(@NonNull Session session) {
+        Log.d(TAG, "onConnect");
+    }
+
+    @Override
+    public void onDisconnect(@NonNull Session session) {
+        Log.d(TAG, "onDisconnect");
     }
 }

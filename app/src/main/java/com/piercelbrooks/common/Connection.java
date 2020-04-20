@@ -4,13 +4,19 @@
 package com.piercelbrooks.common;
 
 import android.os.AsyncTask;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.util.Base64;
 import android.util.Log;
 
-import org.eclipse.californium.elements.KeySetEndpointContextMatcher;
+import org.eclipse.californium.elements.DtlsEndpointContext;
+import org.eclipse.californium.elements.EndpointContext;
 import org.eclipse.californium.elements.RawData;
 import org.eclipse.californium.elements.RawDataChannel;
+import org.eclipse.californium.elements.RelaxedDtlsEndpointContextMatcher;
 import org.eclipse.californium.elements.auth.AdditionalInfo;
+import org.eclipse.californium.elements.auth.PreSharedKeyIdentity;
+import org.eclipse.californium.elements.auth.RawPublicKeyIdentity;
 import org.eclipse.californium.scandium.AlertHandler;
 import org.eclipse.californium.scandium.DTLSConnector;
 import org.eclipse.californium.scandium.auth.ApplicationLevelInfoSupplier;
@@ -20,14 +26,17 @@ import org.eclipse.californium.scandium.dtls.CertificateMessage;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
 import org.eclipse.californium.scandium.dtls.cipher.CipherSuite;
+import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography;
 import org.eclipse.californium.scandium.dtls.pskstore.StaticPskStore;
 import org.eclipse.californium.scandium.dtls.x509.CertificateVerifier;
+import org.json.JSONObject;
 
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.Principal;
+import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.util.Date;
+import java.util.TreeMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,22 +47,31 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public abstract class Connection extends AsyncTask<Void, Void, Void> implements Runnable, Lock, Mortal, ApplicationLevelInfoSupplier, CertificateVerifier, RawDataChannel, AlertHandler, ThreadFactory {
+public abstract class Connection extends AsyncTask<Void, Void, Void> implements Runnable, Lock, Mortal, ApplicationLevelInfoSupplier, CertificateVerifier, RawDataChannel, AlertHandler, ThreadFactory, SessionListener {
     private static final String TAG = "PLB-Connect";
+    private static final String MESSAGE_DATA_CODE = "DATA";
+    private static final String MESSAGE_NAME_CODE = "NAME";
+    private static final String MESSAGE_RE_CODE = "RE";
     private static final int THREADS = 4;
 
     private ExecutorService executor;
     private DTLSConnector connector;
     private ReentrantLock lock;
     private AtomicBoolean isRunning;
+    private InetSocketAddress address;
+    private TreeMap<String, Session> sessions;
+    private ECDHECryptography key;
 
     protected abstract boolean getRole();
 
-    public Connection() {
+    public Connection(@NonNull InetSocketAddress address, @NonNull ECDHECryptography key) {
         super();
-        connector = null;
-        lock = new ReentrantLock();
-        isRunning = new AtomicBoolean(false);
+        this.connector = null;
+        this.lock = new ReentrantLock();
+        this.isRunning = new AtomicBoolean(false);
+        this.address = address;
+        this.sessions = new TreeMap<>();
+        this.key = key;
     }
 
     @Override
@@ -63,11 +81,13 @@ public abstract class Connection extends AsyncTask<Void, Void, Void> implements 
         try {
             if (connector == null) {
                 DtlsConnectorConfig.Builder builder = new DtlsConnectorConfig.Builder();
-                builder.setAddress(new InetSocketAddress(InetAddress.getLoopbackAddress(), Constants.REMOTE_SERVICE_PORT));
+                //builder.setIdentity(getKey().getPrivateKey(), getKey().getPublicKey());
                 builder.setApplicationLevelInfoSupplier(this);
                 //builder.setCertificateVerifier(this);
-                builder.setPskStore(new StaticPskStore("identity", "secret".getBytes()));
-                builder.setSupportedCipherSuites(CipherSuite.TLS_PSK_WITH_AES_128_GCM_SHA256);
+                builder.setPskStore(new StaticPskStore(Constants.REMOTE_SERVICE_IDENTITY, Constants.REMOTE_SERVICE_SECRET.getBytes()));
+                builder.setSupportedCipherSuites(getCipher());
+                builder.setConnectionThreadCount(1);
+                //builder.setRpkTrustAll();
                 //builder.setClientAuthenticationRequired(false);
                 //builder.setClientAuthenticationWanted(false);
                 if (getRole()) {
@@ -75,11 +95,21 @@ public abstract class Connection extends AsyncTask<Void, Void, Void> implements 
                 } else {
                     builder.setClientOnly();
                 }
+                builder.setAddress(address);
                 connector = new DTLSConnector(builder.build());
                 connector.setRawDataReceiver(this);
                 connector.setAlertHandler(this);
-                connector.setEndpointContextMatcher(new KeySetEndpointContextMatcher(TAG, new String[]{}, false){});
+                connector.setEndpointContextMatcher(new RelaxedDtlsEndpointContextMatcher() {
+                    @Override
+                    public boolean isToBeSent(EndpointContext messageContext, EndpointContext connectionContext) {
+                        if ((messageContext == null) || (connectionContext == null)) {
+                            return true;
+                        }
+                        return super.isToBeSent(messageContext, connectionContext);
+                    }
+                });
                 connector.setExecutor(executor);
+                connector.start();
             }
         } catch (Exception exception) {
             exception.printStackTrace();
@@ -147,8 +177,43 @@ public abstract class Connection extends AsyncTask<Void, Void, Void> implements 
 
     @Override
     public void receiveData(RawData raw) {
-        byte[] data = raw.getBytes();
-        Log.d(TAG, Base64.encodeToString(data, 0, data.length, 0));
+        Log.d(TAG, "receiveData");
+        if (raw != null) {
+            Session session = null;
+            JSONObject content = null;
+            int response = -1;
+            boolean success = true;
+            byte[] data = Base64.decode(raw.getBytes(), 0);
+            //JsonReader reader = new JsonReader(new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data))));
+            try {
+                JSONObject reception = new JSONObject(new String(data));
+                content = reception.getJSONObject(MESSAGE_DATA_CODE);
+                response = Integer.parseInt(reception.getString(MESSAGE_RE_CODE));
+                session = getSession(raw);
+            } catch (Exception exception) {
+                exception.printStackTrace();
+                success = false;
+            }
+            if (session == null) {
+                if (getRole()) {
+                    session = new Session(raw.getInetSocketAddress(), new RawPublicKeyIdentity(getKey().getPublicKey()));
+                } else {
+                    success = false;
+                }
+            }
+            if (!success) {
+                Log.e(TAG, Utilities.getIdentifier(content));
+                return;
+            }
+            if (response >= 0) {
+                Message message = session.getMessage(response);
+                if (message != null) {
+                    message.onResponse(content);
+                }
+                return;
+            }
+            session.onConnect();
+        }
     }
 
     @Override
@@ -213,7 +278,99 @@ public abstract class Connection extends AsyncTask<Void, Void, Void> implements 
         return connector;
     }
 
+    public InetSocketAddress getAddress() {
+        return address;
+    }
+
+    public ECDHECryptography getKey() {
+        return key;
+    }
+
     public Executor getExecutor() {
         return executor;
+    }
+
+    public Session getSession(@NonNull RawData raw) {
+        return getSession(raw.getInetSocketAddress(), raw.getSenderIdentity());
+    }
+
+    public Session getSession(@NonNull InetSocketAddress address, @NonNull Principal principal) {
+        if (principal instanceof RawPublicKeyIdentity) {
+            return getSessionRPK(address, (RawPublicKeyIdentity)principal);
+        }
+        if (principal instanceof PreSharedKeyIdentity) {
+            return getSessionPSK(address, (PreSharedKeyIdentity)principal);
+        }
+        return null;
+    }
+
+    public Session getSession(@NonNull InetSocketAddress address, @NonNull PublicKey key) {
+        return getSession(Session.getName(address, key), address, key);
+    }
+
+    public Session getSession(@NonNull String name, @NonNull InetSocketAddress address, @NonNull PublicKey key) {
+        if (!sessions.containsKey(name)) {
+            Session session = new Session(address, key);
+            session.addListener(this);
+            sessions.put(name, session);
+            return session;
+        }
+        return sessions.get(name);
+    }
+
+    public Session getSessionRPK(@NonNull InetSocketAddress address, @NonNull RawPublicKeyIdentity identity) {
+        return getSession(address, identity.getKey());
+    }
+
+    public Session getSessionPSK(@NonNull InetSocketAddress address, @NonNull PreSharedKeyIdentity identity) {
+        return getSession(identity.getIdentity(), address, getKey().getPublicKey());
+    }
+
+    public static String getData(@NonNull Session session, @NonNull JSONObject content, @Nullable Message response) {
+        JSONObject data = new JSONObject();
+        try {
+            data.put(MESSAGE_DATA_CODE, content);
+            data.put(MESSAGE_NAME_CODE, String.valueOf(session.getNext()));
+            data.put(MESSAGE_RE_CODE, session.getMessageName(response));
+        } catch (Exception exception) {
+            exception.printStackTrace();
+            data = null;
+        }
+        if (data == null) {
+            return null;
+        }
+        return Base64.encodeToString(data.toString().getBytes(), 0);
+    }
+
+    public static CipherSuite getCipher() {
+        return CipherSuite.TLS_ECDHE_PSK_WITH_AES_128_GCM_SHA256;
+    }
+
+    public boolean send(@NonNull InetSocketAddress address, @NonNull PublicKey key, @NonNull JSONObject content, @Nullable Message response, @Nullable MessageListener listener) {
+        return send(getSession(address, key), content, response, listener);
+    }
+
+    public boolean send(@NonNull Session session, @NonNull JSONObject content, @Nullable Message response, @Nullable MessageListener listener) {
+        boolean success = true;
+        try {
+            String data = getData(session, content, response);
+            if (data != null) {
+                DtlsEndpointContext endpoint = session.getEndpoint(getCipher());
+                Message message = new Message(session);
+                RawData raw = RawData.outbound(data.getBytes(), endpoint, message, false);
+                message.setContent(content);
+                if (listener != null) {
+                    message.addListener(listener);
+                }
+                Log.d(TAG, data);
+                connector.send(raw);
+            } else {
+                success = false;
+            }
+        } catch (Exception exception) {
+            exception.printStackTrace();
+            success = false;
+        }
+        return success;
     }
 }

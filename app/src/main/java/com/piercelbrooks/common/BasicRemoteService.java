@@ -9,6 +9,12 @@ import android.os.IBinder;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
+import org.eclipse.californium.scandium.dtls.cipher.ECDHECryptography;
+
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.security.PublicKey;
+
 public abstract class BasicRemoteService<T extends BasicRemoteService<T>> extends BasicService<T> implements BasicRemoteServiceUser<T>, Citizen, ServerListener
 {
     private static final String TAG = "PLB-BaseRemServe";
@@ -76,9 +82,9 @@ public abstract class BasicRemoteService<T extends BasicRemoteService<T>> extend
         Governor.getInstance().register(this);
         if (this.server == null)
         {
-            Server server = new Server(this);
+            Server server = new Server(this, new InetSocketAddress(InetAddress.getLoopbackAddress(), Constants.REMOTE_SERVICE_SERVER_PORT), getKey());
             server.birth();
-            while (this.server != server)
+            while (true)
             {
                 synchronized (this.firstServerRun)
                 {
@@ -90,6 +96,10 @@ public abstract class BasicRemoteService<T extends BasicRemoteService<T>> extend
                     {
                         exception.printStackTrace();
                     }
+                }
+                if (this.server == server)
+                {
+                    break;
                 }
             }
         }
@@ -109,7 +119,7 @@ public abstract class BasicRemoteService<T extends BasicRemoteService<T>> extend
     @Override
     public void onFirstServerRun(@NonNull Server server)
     {
-        Utilities.sleep(250);
+        //Utilities.sleep(250);
         synchronized (this.firstServerRun)
         {
             this.server = server;
@@ -120,5 +130,10 @@ public abstract class BasicRemoteService<T extends BasicRemoteService<T>> extend
     public Context getContext()
     {
         return getApplicationContext();
+    }
+
+    public static ECDHECryptography getKey()
+    {
+        return ECDHECryptography.fromNamedCurveId(ECDHECryptography.SupportedGroup.secp256r1.getId());
     }
 }
